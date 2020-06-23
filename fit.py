@@ -46,7 +46,7 @@ class Learner:
 
 class LearnerQ(Learner):
 
-    bounds = np.array([(0, 5000), ])
+    bounds = np.array([(0, 10**6), ])
     init_guess = np.array([1.0, ])
     param_labels = ("init_forget", )
 
