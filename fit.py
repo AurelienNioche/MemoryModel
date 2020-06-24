@@ -18,7 +18,7 @@ N_SEC_PER_DAY = 86400
 
 class Learner:
 
-    bounds = np.array([(0, 10**6), (0, 1)])
+    bounds = np.array([(0, 10**8), (0, 1)])
     init_guess = np.array([1.0, 0.00])
     param_labels = ("init_forget", "rep_effect")
 
@@ -101,10 +101,14 @@ def fit(class_model, entries, method="SLSQP"):
 
 def main():
 
-    class_model = LearnerQ
+    class_model = Learner
 
     entries = Data.objects.exclude(n_rep=1)
-    user_item_pair = np.unique(np.asarray(entries.values_list('user_item_pair_id', flat=True)))
+    user_item_pair = np.unique(entries.values_list('user_item_pair_id', flat=True))
+    black_list = np.unique(entries.filter(delta_last=0).values_list('user_item_pair_id', flat=True))
+    user_item_pair = list(user_item_pair)
+    for b in black_list:
+        user_item_pair.remove(b)
 
     results = []
     for uip in tqdm(user_item_pair):

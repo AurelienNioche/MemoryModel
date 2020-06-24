@@ -13,7 +13,7 @@ class Data(models.Model):
     n_rep = models.IntegerField(db_index=True, blank=True, null=True)
     outcome = models.BooleanField(db_index=True, blank=True, null=True)
     t_last = models.IntegerField(db_index=True, blank=True, null=True)
-    deck = models.IntegerField(db_index=True, blank=True, null=True)
+    deck = models.IntegerField(blank=True, null=True)
     delta_last = models.IntegerField(db_index=True, blank=True, null=True)
     n_obs_user = models.IntegerField(db_index=True, blank=True, null=True)
     n_obs_item = models.IntegerField(db_index=True, blank=True, null=True)

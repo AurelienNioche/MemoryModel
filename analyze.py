@@ -12,11 +12,13 @@ def main():
     plt.hist(df["init_forget"], log=True)
     plt.show()
 
-    # plt.hist(df["rep_effect"])
-    # plt.show()
+    if "rep_effect" in df:
 
-    # plt.scatter(df["init_forget"], df["rep_effect"], alpha=0.01)
-    # plt.show()
+        plt.hist(df[df["init_forget"] > 0]["rep_effect"], log=True)
+        plt.show()
+
+        plt.scatter(df["init_forget"], df["rep_effect"], alpha=0.01)
+        plt.show()
 
 
 if __name__ == "__main__":
