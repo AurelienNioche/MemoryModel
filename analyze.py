@@ -6,7 +6,7 @@ import matplotlib.pyplot as plt
 
 def main():
 
-    for model in "PowerLaw", :#"Learner", "LearnerQ":
+    for model in "Exponential", :#"Learner", "LearnerQ":
 
         print(model)
         df = pd.read_csv(os.path.join("results", f"fit_{model}.csv"))

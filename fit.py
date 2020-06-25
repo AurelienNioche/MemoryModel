@@ -138,6 +138,38 @@ class PowerLaw(Learner):
         return p
 
 
+class Exponential(Learner):
+
+    bounds = np.array([(0.0, 10 ** 6),
+                       (0.0, 10 ** 6),
+                       (0.0, 10 ** 6)])
+
+    init_guess = np.array([0.5, 1., 0.])
+    param_labels = ("d", "a", "init_pe")
+
+    @classmethod
+    def p(cls, param, timestamp, delta_last, outcome, *args, **kwargs):
+        d, a, init_pe = param
+
+        n = len(timestamp)
+
+        _pe = init_pe
+        pe = np.zeros(n)
+
+        for i in np.argsort(timestamp):
+            with np.errstate(over='ignore'):
+                _pe += a * np.exp(- d * (delta_last[i] / N_SEC_PER_DAY))
+            pe[i] = _pe
+
+        p = pe / (1 + pe)
+
+        failure = np.invert(outcome)
+        p[failure] = 1 - p[failure]
+        p[p > 1] = 1
+        p[p < 0] = 0
+        return p
+
+
 def fit(class_model, args, method="SLSQP"):
 
     if method == "SLSQP":
@@ -168,11 +200,15 @@ def fit(class_model, args, method="SLSQP"):
 
 def main():
 
-    class_model = PowerLaw
+    class_model = Exponential
 
     entries = Data.objects.exclude(n_rep=1)
-    user_item_pair = np.unique(entries.values_list('user_item_pair_id', flat=True))
-    black_list = np.unique(entries.filter(delta_last=0).values_list('user_item_pair_id', flat=True))
+    user_item_pair = \
+        np.unique(entries.
+                  values_list('user_item_pair_id', flat=True))
+    black_list = \
+        np.unique(entries.filter(delta_last=0)
+                  .values_list('user_item_pair_id', flat=True))
     user_item_pair = list(user_item_pair)
     for b in black_list:
         user_item_pair.remove(b)

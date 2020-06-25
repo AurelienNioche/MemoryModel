@@ -4,7 +4,7 @@ from scipy.special import expit
 N_SEC_PER_DAY = 60*60*24
 
 
-class ActR:
+class Learner:
 
     bounds = np.array([(0.001, 1.0),
                        (-100., 10.),
@@ -25,7 +25,7 @@ class ActR:
         pe = np.zeros(n)
 
         for i in np.argsort(timestamp):
-            _pe += a * (delta_last[i]) ** (-d)
+            _pe += a * np.exp(- d * (delta_last[i] / N_SEC_PER_DAY)) # a * (delta_last[i]) ** (-d)
             pe[i] = _pe
         #
         # with np.errstate(divide='ignore'):
@@ -42,8 +42,10 @@ class ActR:
 
 def main():
 
-    print(ActR.p(param=(0.5, 100, 0), timestamp=np.arange(4), outcome=np.ones(4, dtype=bool),
-                 delta_last=np.array([60, 60, 60, 60])))
+    print(Learner.p(
+        param=(0.5, 10, 0), timestamp=np.arange(4),
+        outcome=np.ones(4, dtype=bool),
+        delta_last=np.array([60, 60, 60, 60])))
 
 
 if __name__ == "__main__":
