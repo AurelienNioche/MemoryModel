@@ -6,19 +6,27 @@ import matplotlib.pyplot as plt
 
 def main():
 
-    df = pd.read_csv(os.path.join("results", "fit_LearnerQ.csv"))
-    # print(max(df["init_forget"]))
+    for model in "PowerLaw", :#"Learner", "LearnerQ":
 
-    plt.hist(df["init_forget"], log=True)
-    plt.show()
+        print(model)
+        df = pd.read_csv(os.path.join("results", f"fit_{model}.csv"))
+        # print(max(df["init_forget"]))
 
-    if "rep_effect" in df:
+        col = [c for c in df.keys() if c not in ("LLS", "BIC", "n", "uip", "Unnamed: 0")]
 
-        plt.hist(df[df["init_forget"] > 0]["rep_effect"], log=True)
-        plt.show()
+        for c in col:
 
-        plt.scatter(df["init_forget"], df["rep_effect"], alpha=0.01)
-        plt.show()
+            plt.title(model)
+            plt.hist(df[c], log=True)
+            plt.xlabel(c)
+            plt.ylabel("freq")
+            plt.show()
+
+            # plt.scatter(df["init_forget"], df["rep_effect"], alpha=0.01)
+            # plt.show()
+
+        print("Average p:", np.mean(np.exp(df["LLS"]/df["n"])))
+        print("Sum lls: ", df["LLS"].sum())
 
 
 if __name__ == "__main__":

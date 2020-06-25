@@ -6,6 +6,7 @@ django.setup()
 import numpy as np
 import pandas as pd
 from tqdm import tqdm
+from scipy.special import expit
 
 from data_interface.models import Data
 
@@ -23,7 +24,7 @@ class Learner:
     param_labels = ("init_forget", "rep_effect")
 
     @classmethod
-    def p(cls, param, n_rep, delta_last, outcome, deck):
+    def p(cls, param, n_rep, delta_last, outcome, *args, **kwargs):
 
         init_forget, rep_effect = param
         fr = init_forget * (1 - rep_effect) ** (n_rep - 2)
@@ -51,7 +52,7 @@ class LearnerQ(Learner):
     param_labels = ("init_forget", )
 
     @classmethod
-    def p(cls, param, n_rep, delta_last, outcome, deck):
+    def p(cls, param, delta_last, outcome, deck, *args, **kwargs):
 
         init_forget = param
         fr = init_forget / deck
@@ -59,7 +60,7 @@ class LearnerQ(Learner):
         # init_forget, rep_effect = param
         # fr = init_forget * (1 - rep_effect) ** (n_rep - 2)
 
-        p = np.exp(- fr * delta_last /N_SEC_PER_DAY)
+        p = np.exp(- fr * delta_last / N_SEC_PER_DAY)
 
         failure = np.invert(outcome)
         p[failure] = 1 - p[failure]
@@ -67,11 +68,77 @@ class LearnerQ(Learner):
         return p
 
 
-def fit(class_model, entries, method="SLSQP"):
+class ActR(Learner):
 
-    args = ({
-            k: np.asarray(entries.values_list(k, flat=True))
-            for k in ("n_rep", "delta_last", "outcome", "deck")})
+    bounds = np.array([(0.0, 10**6),
+                       (-10**6, 10**6),
+                       (0.0001, 10**6),
+                       (0.0, 10**6)])
+
+    init_guess = np.array([0.5, 0., 10., 100.])
+    param_labels = ("d", "tau", "s", "init_pe")
+
+    @classmethod
+    def p(cls, param, timestamp, delta_last, outcome, *args, **kwargs):
+
+        d, tau, s, init_pe = param
+        temp = s * np.square(2)
+
+        n = len(timestamp)
+
+        _pe = init_pe
+        pe = np.zeros(n)
+
+        for i in np.argsort(timestamp):
+            with np.errstate(over='ignore'):
+                _pe += (delta_last[i] / N_SEC_PER_DAY) ** (-d)
+            pe[i] = _pe
+
+        with np.errstate(divide='ignore'):
+            a = np.log(pe)
+
+        x = (- tau + a) / temp
+
+        p = expit(x)
+        failure = np.invert(outcome)
+        p[failure] = 1 - p[failure]
+        p[p > 1] = 1
+        p[p < 0] = 0
+        return p
+
+
+class PowerLaw(Learner):
+    bounds = np.array([(0.0, 10 ** 6),
+                       (0.0, 10 ** 6),
+                       (0.0, 10 ** 6)])
+
+    init_guess = np.array([0.5, 1., 0.])
+    param_labels = ("d", "a", "init_pe")
+
+    @classmethod
+    def p(cls, param, timestamp, delta_last, outcome, *args, **kwargs):
+        d, a, init_pe = param
+
+        n = len(timestamp)
+
+        _pe = init_pe
+        pe = np.zeros(n)
+
+        for i in np.argsort(timestamp):
+            with np.errstate(over='ignore'):
+                _pe += a * (delta_last[i] / N_SEC_PER_DAY) ** (-d)
+            pe[i] = _pe
+
+        p = pe / (1 + pe)
+
+        failure = np.invert(outcome)
+        p[failure] = 1 - p[failure]
+        p[p > 1] = 1
+        p[p < 0] = 0
+        return p
+
+
+def fit(class_model, args, method="SLSQP"):
 
     if method == "SLSQP":
         res = minimize(
@@ -84,7 +151,7 @@ def fit(class_model, entries, method="SLSQP"):
     else:
         raise ValueError(f"Optimization method not recognized: '{method}'")
 
-    n = entries.count()
+    n = len(args["timestamp"])
     lls = - res.fun
     # \mathrm{BIC} = k\ln(n) - 2\ln({\widehat{L}})
     k = len(class_model.param_labels)
@@ -101,7 +168,7 @@ def fit(class_model, entries, method="SLSQP"):
 
 def main():
 
-    class_model = Learner
+    class_model = PowerLaw
 
     entries = Data.objects.exclude(n_rep=1)
     user_item_pair = np.unique(entries.values_list('user_item_pair_id', flat=True))
@@ -112,8 +179,14 @@ def main():
 
     results = []
     for uip in tqdm(user_item_pair):
+
         entries_uip = entries.filter(user_item_pair_id=uip)
-        r = fit(class_model=class_model, entries=entries_uip)
+
+        args = ({
+            k: np.asarray(entries_uip.values_list(k, flat=True))
+            for k in ("n_rep", "timestamp", "delta_last", "outcome", "deck")})
+
+        r = fit(class_model=class_model, args=args)
         r['uip'] = uip
         results.append(r)
 
@@ -121,6 +194,9 @@ def main():
     os.makedirs("results", exist_ok=True)
     df.to_csv(os.path.join("results", f"fit_{class_model.__name__}.csv"))
 
+
+def sanity_check():
+    pass
 
 if __name__ == "__main__":
     main()
