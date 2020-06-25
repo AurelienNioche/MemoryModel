@@ -5,45 +5,50 @@ N_SEC_PER_DAY = 60*60*24
 
 
 class Learner:
+    bounds = np.array([(0.0, 10 ** 6),
+                       (0.0, 10 ** 6)])
 
-    bounds = np.array([(0.001, 1.0),
-                       (-100., 10.),
-                       (0.001, 5.),
-                       (0.0, 10000)])
-
-    init_guess = np.array([0.5, 0., 10., 100.])
-    param_labels = ("d", "tau", "s", "init_pe")
+    init_guess = np.array([0.5, 1.])
+    param_labels = ("d", "a",)
 
     @classmethod
     def p(cls, param, timestamp, delta_last, outcome, *args, **kwargs):
-
-        d, a, init_pe = param
+        d, a = param
 
         n = len(timestamp)
 
-        _pe = init_pe
         pe = np.zeros(n)
 
-        for i in np.argsort(timestamp):
-            _pe += a * np.exp(- d * (delta_last[i] / N_SEC_PER_DAY)) # a * (delta_last[i]) ** (-d)
-            pe[i] = _pe
-        #
-        # with np.errstate(divide='ignore'):
-        #     a = np.log(pe)
-        #
-        # x = (- tau + a) / temp
+        sorted_idx = np.argsort(timestamp)
+        timestamp = timestamp[sorted_idx]
+        delta_last = delta_last[sorted_idx]
+        outcome = outcome[sorted_idx]
+
+        pe[0] = cls.f(delta_last[0], a, d)
+        for i in range(1, n):
+            delta = np.zeros(i)
+            delta[:] = timestamp[i] - timestamp[:i]
+            _pe = cls.f(delta, a, d)
+            pe[i] = _pe.sum()
 
         p = pe / (1 + pe)
+
         failure = np.invert(outcome)
         p[failure] = 1 - p[failure]
+        p[p > 1] = 1
         p[p < 0] = 0
         return p
+
+    @classmethod
+    def f(cls, delta, a, d):
+        with np.errstate(over='ignore'):
+            return a * (delta/N_SEC_PER_DAY) ** -d
 
 
 def main():
 
     print(Learner.p(
-        param=(0.5, 10, 0), timestamp=np.arange(4),
+        param=(0.5, 1,), timestamp=np.arange(4),
         outcome=np.ones(4, dtype=bool),
         delta_last=np.array([60, 60, 60, 60])))
 

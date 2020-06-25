@@ -72,27 +72,32 @@ class ActR(Learner):
 
     bounds = np.array([(0.0, 10**6),
                        (-10**6, 10**6),
-                       (0.0001, 10**6),
-                       (0.0, 10**6)])
+                       (0.0001, 10**6),])
 
-    init_guess = np.array([0.5, 0., 10., 100.])
-    param_labels = ("d", "tau", "s", "init_pe")
+    init_guess = np.array([0.5, 0., 10.])
+    param_labels = ("d", "tau", "s")
 
     @classmethod
     def p(cls, param, timestamp, delta_last, outcome, *args, **kwargs):
 
-        d, tau, s, init_pe = param
+        d, tau, s = param
         temp = s * np.square(2)
 
         n = len(timestamp)
 
-        _pe = init_pe
         pe = np.zeros(n)
 
-        for i in np.argsort(timestamp):
-            with np.errstate(over='ignore'):
-                _pe += (delta_last[i] / N_SEC_PER_DAY) ** (-d)
-            pe[i] = _pe
+        sorted_idx = np.argsort(timestamp)
+        timestamp = timestamp[sorted_idx]
+        delta_last = delta_last[sorted_idx]
+        outcome = outcome[sorted_idx]
+
+        pe[0] = cls.f(delta_last[0], d)
+        for i in range(1, n):
+            delta = np.zeros(i)
+            delta[:] = timestamp[i] - timestamp[:i]
+            _pe = cls.f(delta, d)
+            pe[i] = _pe.sum()
 
         with np.errstate(divide='ignore'):
             a = np.log(pe)
@@ -106,28 +111,38 @@ class ActR(Learner):
         p[p < 0] = 0
         return p
 
+    @classmethod
+    def f(cls, delta, d):
+        with np.errstate(over='ignore'):
+            return (delta/N_SEC_PER_DAY) ** -d
+
 
 class PowerLaw(Learner):
     bounds = np.array([(0.0, 10 ** 6),
-                       (0.0, 10 ** 6),
                        (0.0, 10 ** 6)])
 
-    init_guess = np.array([0.5, 1., 0.])
-    param_labels = ("d", "a", "init_pe")
+    init_guess = np.array([0.5, 1.])
+    param_labels = ("d", "a",)
 
     @classmethod
     def p(cls, param, timestamp, delta_last, outcome, *args, **kwargs):
-        d, a, init_pe = param
+        d, a = param
 
         n = len(timestamp)
 
-        _pe = init_pe
         pe = np.zeros(n)
 
-        for i in np.argsort(timestamp):
-            with np.errstate(over='ignore'):
-                _pe += a * (delta_last[i] / N_SEC_PER_DAY) ** (-d)
-            pe[i] = _pe
+        sorted_idx = np.argsort(timestamp)
+        timestamp = timestamp[sorted_idx]
+        delta_last = delta_last[sorted_idx]
+        outcome = outcome[sorted_idx]
+
+        pe[0] = cls.f(delta_last[0], a, d)
+        for i in range(1, n):
+            delta = np.zeros(i)
+            delta[:] = timestamp[i] - timestamp[:i]
+            _pe = cls.f(delta, a, d)
+            pe[i] = _pe.sum()
 
         p = pe / (1 + pe)
 
@@ -137,37 +152,18 @@ class PowerLaw(Learner):
         p[p < 0] = 0
         return p
 
+    @classmethod
+    def f(cls, delta, a, d):
+        with np.errstate(over='ignore'):
+            return a * (delta/N_SEC_PER_DAY) ** -d
 
-class Exponential(Learner):
 
-    bounds = np.array([(0.0, 10 ** 6),
-                       (0.0, 10 ** 6),
-                       (0.0, 10 ** 6)])
-
-    init_guess = np.array([0.5, 1., 0.])
-    param_labels = ("d", "a", "init_pe")
+class Exponential(PowerLaw):
 
     @classmethod
-    def p(cls, param, timestamp, delta_last, outcome, *args, **kwargs):
-        d, a, init_pe = param
-
-        n = len(timestamp)
-
-        _pe = init_pe
-        pe = np.zeros(n)
-
-        for i in np.argsort(timestamp):
-            with np.errstate(over='ignore'):
-                _pe += a * np.exp(- d * (delta_last[i] / N_SEC_PER_DAY))
-            pe[i] = _pe
-
-        p = pe / (1 + pe)
-
-        failure = np.invert(outcome)
-        p[failure] = 1 - p[failure]
-        p[p > 1] = 1
-        p[p < 0] = 0
-        return p
+    def f(cls, delta, a, d):
+        with np.errstate(over='ignore'):
+            return a * np.exp(- d * (delta / N_SEC_PER_DAY))
 
 
 def fit(class_model, args, method="SLSQP"):
@@ -198,9 +194,7 @@ def fit(class_model, args, method="SLSQP"):
     return r
 
 
-def main():
-
-    class_model = Exponential
+def main(class_model):
 
     entries = Data.objects.exclude(n_rep=1)
     user_item_pair = \
@@ -231,8 +225,6 @@ def main():
     df.to_csv(os.path.join("results", f"fit_{class_model.__name__}.csv"))
 
 
-def sanity_check():
-    pass
-
 if __name__ == "__main__":
-    main()
+    for cm in Exponential, PowerLaw, ActR:
+        main(class_model=cm)
