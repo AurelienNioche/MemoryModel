@@ -2,13 +2,17 @@ import os
 import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
+from scipy.special import logsumexp
 
 
 def main():
 
-    for model in "Exponential", :#"Learner", "LearnerQ":
+    models = "PowerLaw", "Learner", "LearnerQ", "ActR", "Exponential"
+    average_p = np.zeros(len(models))
+    sum_lls = np.zeros(len(models))
 
-        print(model)
+    for i, model in enumerate(models):
+
         df = pd.read_csv(os.path.join("results", f"fit_{model}.csv"))
         # print(max(df["init_forget"]))
 
@@ -24,9 +28,15 @@ def main():
 
             # plt.scatter(df["init_forget"], df["rep_effect"], alpha=0.01)
             # plt.show()
+        average_p[i] = np.exp(df["LLS"].sum() / df["n"].sum())
+        sum_lls[i] = df["LLS"].sum()
 
-        print("Average p:", np.mean(np.exp(df["LLS"]/df["n"])))
-        print("Sum lls: ", df["LLS"].sum())
+    sorted_idx = np.argsort(-sum_lls)
+    for i in sorted_idx:
+        print("Model:", models[i])
+        print("Average p:", average_p[i])
+        print("Sum lls: ", sum_lls[i])
+        print()
 
 
 if __name__ == "__main__":
