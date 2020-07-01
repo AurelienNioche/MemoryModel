@@ -7,7 +7,7 @@ from scipy.special import logsumexp
 
 def main():
 
-    models = "PowerLaw", "Learner", "LearnerQ", "ActR", "Exponential"
+    models = "ActR2008", "PowerLawOneParam", "PowerLaw", "Learner", "LearnerQ", "ActR", "Exponential"
     average_p = np.zeros(len(models))
     sum_lls = np.zeros(len(models))
 
@@ -21,7 +21,7 @@ def main():
         for c in col:
 
             plt.title(model)
-            plt.hist(df[c], log=True)
+            plt.hist(df[c], log=True, bins=20)
             plt.xlabel(c)
             plt.ylabel("freq")
             plt.show()
