@@ -2,12 +2,11 @@ import os
 import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
-from scipy.special import logsumexp
 
 
 def main():
 
-    models = "ActR2008", "PowerLawOneParam", "PowerLaw", "Learner", "LearnerQ", "ActR", "Exponential"
+    models = "ActR2008", "ActR2005", "PowerLaw", "LearnerQ", "Learner"
     average_p = np.zeros(len(models))
     sum_lls = np.zeros(len(models))
 

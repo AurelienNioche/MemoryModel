@@ -19,21 +19,22 @@ N_SEC_PER_DAY = 86400
 
 class Learner:
 
-    bounds = np.array([(0, 10**8), (0, 1)])
-    init_guess = np.array([1.0, 0.00])
+    bounds = np.array([(0, 10**6), (0., 1.), ])
+    init_guess = np.array([1.0, 0.00, ])
     param_labels = ("init_forget", "rep_effect")
 
     @classmethod
     def p(cls, param, n_rep, delta_last, outcome, *args, **kwargs):
+        with np.errstate(divide='ignore', invalid='ignore'):
+            init_forget, rep_effect = param
+            fr = init_forget * (1 - rep_effect) ** (n_rep - 2)
 
-        init_forget, rep_effect = param
-        fr = init_forget * (1 - rep_effect) ** (n_rep - 2)
+            p = np.exp(- fr * delta_last)
 
-        p = np.exp(- fr * delta_last / N_SEC_PER_DAY)
-
-        failure = np.invert(outcome)
-        p[failure] = 1 - p[failure]
-        p[p < 0] = 0
+            failure = np.invert(outcome)
+            p[failure] = 1 - p[failure]
+            p[p < 0] = 0
+            p[p > 1] = 1
         return p
 
     @classmethod
@@ -53,68 +54,61 @@ class LearnerQ(Learner):
 
     @classmethod
     def p(cls, param, delta_last, outcome, deck, *args, **kwargs):
+        with np.errstate(divide='ignore', invalid='ignore'):
+            init_forget = param
+            fr = init_forget / deck
 
-        init_forget = param
-        fr = init_forget / deck
+            # init_forget, rep_effect = param
+            # fr = init_forget * (1 - rep_effect) ** (n_rep - 2)
 
-        # init_forget, rep_effect = param
-        # fr = init_forget * (1 - rep_effect) ** (n_rep - 2)
+            p = np.exp(- fr * delta_last)
 
-        p = np.exp(- fr * delta_last / N_SEC_PER_DAY)
-
-        failure = np.invert(outcome)
-        p[failure] = 1 - p[failure]
-        p[p < 0] = 0
+            failure = np.invert(outcome)
+            p[failure] = 1 - p[failure]
+            p[p < 0] = 0
+            p[p > 1] = 1
         return p
 
 
 class ActR2005(Learner):
 
-    bounds = np.array([(0.0, 10**6),
-                       (-10**6, 10**6),
-                       (0.0001, 10**6),])
+    bounds = np.array([(-1, 1),
+                       (0.00001, 1),
+                       (0.0, 1.0),
+                       (0.0000001, 100), ])
 
-    init_guess = np.array([0.5, 0., 10.])
-    param_labels = ("d", "tau", "s")
+    init_guess = np.array([0.0, 1.0,  0.7, 1.0])
+    param_labels = ("tau", "s", "a", "dt")
 
     @classmethod
     def p(cls, param, timestamp, delta_last, outcome, *args, **kwargs):
+        with np.errstate(divide='ignore', invalid='ignore'):
+            tau, s, a, dt = param
 
-        d, tau, s = param
-        temp = s * np.square(2)
+            n = len(timestamp)
 
-        n = len(timestamp)
+            sorted_idx = np.argsort(timestamp)
+            timestamp = timestamp[sorted_idx]
+            delta_last = delta_last[sorted_idx]
+            outcome = outcome[sorted_idx]
 
-        pe = np.zeros(n)
+            e_m = np.zeros(n)
+            delta0 = delta_last[0]
+            timestamp0 = timestamp[0] - delta0
+            timestamp = np.hstack((np.array([timestamp0, ]), timestamp))
+            e_m[0] = delta0 ** -a
+            for i in range(1, n):
+                delta = timestamp[i + 1] - timestamp[:i + 1]
+                e_m[i] = np.sum(np.power(dt * delta[:i + 1], a))
 
-        sorted_idx = np.argsort(timestamp)
-        timestamp = timestamp[sorted_idx]
-        delta_last = delta_last[sorted_idx]
-        outcome = outcome[sorted_idx]
+            x = (- tau + np.log(e_m)) / s
 
-        pe[0] = cls.f(delta_last[0], d)
-        for i in range(1, n):
-            delta = np.zeros(i)
-            delta[:] = timestamp[i] - timestamp[:i]
-            _pe = cls.f(delta, d)
-            pe[i] = _pe.sum()
-
-        with np.errstate(divide='ignore'):
-            a = np.log(pe)
-
-        x = (- tau + a) / temp
-
-        p = expit(x)
-        failure = np.invert(outcome)
-        p[failure] = 1 - p[failure]
-        p[p > 1] = 1
-        p[p < 0] = 0
+            p = expit(x)
+            failure = np.invert(outcome)
+            p[failure] = 1 - p[failure]
+            p[p > 1] = 1
+            p[p < 0] = 0
         return p
-
-    @classmethod
-    def f(cls, delta, d):
-        with np.errstate(over='ignore'):
-            return (delta/N_SEC_PER_DAY) ** -d
 
 
 class ActR2008(Learner):
@@ -123,156 +117,84 @@ class ActR2008(Learner):
                        (0.00001, 1),
                        (0.0, 1.0),
                        (0.0, 1.0),
-                       (0.0000001, 100), ])
+                       (0.0000001, 10**4), ])
 
     init_guess = np.array([0.0, 1.0, 1.0, 0.7, 1.0])
     param_labels = ("tau", "s", "c", "a", "dt")
 
     @classmethod
     def p(cls, param, timestamp, delta_last, outcome, *args, **kwargs):
+        with np.errstate(divide='ignore', invalid='ignore', over='ignore'):
+            tau, s, c, a, dt = param
 
-        tau, s, c, a, dt = param
+            n = len(timestamp)
 
-        n = len(timestamp)
+            sorted_idx = np.argsort(timestamp)
+            timestamp = timestamp[sorted_idx]
+            delta_last = delta_last[sorted_idx]
+            outcome = outcome[sorted_idx]
 
-        sorted_idx = np.argsort(timestamp)
-        timestamp = timestamp[sorted_idx]
-        delta_last = delta_last[sorted_idx]
-        outcome = outcome[sorted_idx]
+            d = np.full(n, a)
+            e_m = np.zeros(n)
+            delta0 = delta_last[0]
+            timestamp0 = timestamp[0]-delta0
+            timestamp = np.hstack((np.array([timestamp0, ]), timestamp))
+            d[0] = a
+            e_m[0] = delta0**-a
+            for i in range(1, n):
+                delta = timestamp[i+1] - timestamp[:i+1]
+                d[i] = c * e_m[i - 1] + a
+                e_m[i] = np.sum(np.power(dt*delta[:i+1], -d[:i+1]))
 
-        d = np.full(n, a)
-        e_m = np.zeros(n)
-        delta0 = delta_last[0]
-        timestamp0 = timestamp[0]-delta0
-        timestamp = np.hstack((np.array([timestamp0, ]), timestamp))
-        d[0] = a
-        e_m[0] = delta0**-a
-        for i in range(1, n):
-            delta = timestamp[i+1] - timestamp[:i+1]
-            d[i] = c * e_m[i - 1] + a
-            e_m[i] = np.sum(np.power(dt*delta[:i+1], -d[:i+1]))
+            x = (-tau + np.log(e_m)) / s
 
-        x = (-tau + np.log(e_m)) / s
-
-        p = expit(x)
-        failure = np.invert(outcome)
-        p[failure] = 1 - p[failure]
-        p[p > 1] = 1
-        p[p < 0] = 0
+            p = expit(x)
+            failure = np.invert(outcome)
+            p[failure] = 1 - p[failure]
+            p[p > 1] = 1
+            p[p < 0] = 0
         return p
-
-
-class ActRIntercept(Learner):
-
-    bounds = np.array([(0.0, 10**6),
-                       (0.0, 10 ** 6),
-                       (-10**6, 10**6),
-                       (0.0001, 10**6),])
-
-    init_guess = np.array([0.5, 1., 0., 10.])
-    param_labels = ("d", "a", "tau", "s")
-
-    @classmethod
-    def p(cls, param, timestamp, delta_last, outcome, *args, **kwargs):
-
-        d, a, tau, s = param
-        temp = s * np.square(2)
-
-        n = len(timestamp)
-
-        pe = np.zeros(n)
-
-        sorted_idx = np.argsort(timestamp)
-        timestamp = timestamp[sorted_idx]
-        delta_last = delta_last[sorted_idx]
-        outcome = outcome[sorted_idx]
-
-        pe[0] = cls.f(delta_last[0], d, a)
-        for i in range(1, n):
-            delta = np.zeros(i)
-            delta[:] = timestamp[i] - timestamp[:i]
-            _pe = cls.f(delta, d, a)
-            pe[i] = _pe.sum()
-
-        with np.errstate(divide='ignore'):
-            a = np.log(pe)
-
-        x = (- tau + a) / temp
-
-        p = expit(x)
-        failure = np.invert(outcome)
-        p[failure] = 1 - p[failure]
-        p[p > 1] = 1
-        p[p < 0] = 0
-        return p
-
-    @classmethod
-    def f(cls, delta, d, a):
-        with np.errstate(over='ignore'):
-            return a * (delta/N_SEC_PER_DAY) ** (-d)
 
 
 class PowerLaw(Learner):
-    bounds = np.array([(0.0, 10 ** 6),
-                       (0.0, 10 ** 6)])
+    bounds = np.array([(0.0, 1.0),
+                       (0.0, 1.0),
+                       (0.0, 10 ** 4)])
 
-    init_guess = np.array([0.5, 1.])
-    param_labels = ("d", "a",)
+    init_guess = np.array([0.5, 1.0, 1.0])
+    param_labels = ("d", "a", "dt")
 
     @classmethod
     def p(cls, param, timestamp, delta_last, outcome, *args, **kwargs):
+        with np.errstate(divide='ignore', invalid='ignore'):
+            n = len(timestamp)
 
-        n = len(timestamp)
+            d, a, dt = param
 
-        pe = np.zeros(n)
+            sorted_idx = np.argsort(timestamp)
+            timestamp = timestamp[sorted_idx]
+            delta_last = delta_last[sorted_idx]
+            outcome = outcome[sorted_idx]
 
-        sorted_idx = np.argsort(timestamp)
-        timestamp = timestamp[sorted_idx]
-        delta_last = delta_last[sorted_idx]
-        outcome = outcome[sorted_idx]
+            m = np.zeros(n)
+            delta0 = delta_last[0]
+            timestamp0 = timestamp[0]-delta0
+            timestamp = np.hstack((np.array([timestamp0, ]), timestamp))
 
-        pe[0] = cls.f(delta_last[0], param)
-        for i in range(1, n):
-            delta = np.zeros(i)
-            delta[:] = timestamp[i] - timestamp[:i]
-            _pe = cls.f(delta, param)
-            pe[i] = _pe.sum()
+            m[0] = a * np.power(delta0*dt, -d)
+            with np.errstate(divide='ignore', invalid='ignore'):
+                for i in range(1, n):
+                    delta = timestamp[i+1] - timestamp[:i+1]
+                    m_ = a * np.power(delta*dt, -d)
+                    m[i] = m_.sum()
 
-        p = pe / (1 + pe)
+            p = m / (1 + m)
 
-        failure = np.invert(outcome)
-        p[failure] = 1 - p[failure]
-        p[p > 1] = 1
-        p[p < 0] = 0
+            failure = np.invert(outcome)
+            p[failure] = 1 - p[failure]
+            p[p > 1] = 1
+            p[p < 0] = 0
         return p
-
-    @classmethod
-    def f(cls, delta, param):
-        d, a = param
-        with np.errstate(over='ignore'):
-            return a * (delta/N_SEC_PER_DAY) ** -d
-
-
-class PowerLawOneParam(PowerLaw):
-    bounds = np.array([(0.0, 10 ** 6), ])
-
-    init_guess = np.array([0.5, ])
-    param_labels = ("d",)
-
-    @classmethod
-    def f(cls, delta, param):
-        d, = param
-        with np.errstate(over='ignore'):
-            return (delta/N_SEC_PER_DAY) ** -d
-
-
-class Exponential(PowerLaw):
-
-    @classmethod
-    def f(cls, delta, param):
-        d, a = param
-        with np.errstate(over='ignore'):
-            return a * np.exp(- d * (delta / N_SEC_PER_DAY))
 
 
 def fit(class_model, args, method="SLSQP"):
@@ -320,6 +242,8 @@ def main(class_model):
     for uip in tqdm(user_item_pair):
 
         entries_uip = entries.filter(user_item_pair_id=uip)
+        if entries_uip.count() < 20:
+            continue
 
         args = ({
             k: np.asarray(entries_uip.values_list(k, flat=True))
@@ -335,5 +259,5 @@ def main(class_model):
 
 
 if __name__ == "__main__":
-    for cm in ActR2008, : #Exponential, PowerLaw, ActR:
+    for cm in LearnerQ, Learner:
         main(class_model=cm)
